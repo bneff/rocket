@@ -11,7 +11,7 @@
 #include <errno.h>
 #include <poll.h>
 
-#include "rocket/socket.h"
+#include "rocket/tcp_socket.h"
 
 int main(int argc, char *argv[])
 {

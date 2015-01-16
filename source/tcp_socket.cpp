@@ -13,7 +13,7 @@
 #include <arpa/inet.h>
 #include <utility>
 
-#include "rocket/socket.h"
+#include "rocket/tcp_socket.h"
 
 
 rocket::tcp_socket::tcp_socket() :
