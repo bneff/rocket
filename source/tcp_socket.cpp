@@ -13,6 +13,8 @@
 #include <arpa/inet.h>
 #include <utility>
 
+#include <chrono>
+
 #include "rocket/tcp_socket.h"
 
 rocket::tcp_socket::tcp_socket() :
@@ -62,8 +64,8 @@ ssize_t rocket::tcp_socket::close()
 }
 
 //Need to check for sockfd_ > 0 after poll() returns
-ssize_t rocket::tcp_socket::send
-ssize_t rocket::tcp_socket::recv
+//ssize_t rocket::tcp_socket::send
+//ssize_t rocket::tcp_socket::recv
 
 ssize_t rocket::tcp_socket::shutdown( int how )
 {
@@ -125,7 +127,7 @@ rocket::tcp_socket rocket::tcp_socket::accept()
     rocket::tcp_socket client_socket;
 
     // -1 will wait forever, turning this into a blocking call
-    if( can_recv_data(-1) )
+    if( can_recv_data(std::chrono::milliseconds(-1) ) )
     {
         ssize_t ret = ::accept(sockfd_, (struct sockaddr *)&remote_peer, &addr_len);
         if( ret > 0 )
@@ -171,12 +173,12 @@ std::pair<std::string, uint16_t> rocket::tcp_socket::get_local_address()
     }
 }
 
-ssize_t rocket::tcp_socket::connect( std::string host, uint16_t port, int timeout )
+ssize_t rocket::tcp_socket::connect( std::string host, uint16_t port, std::chrono::milliseconds millis )
 {
     //connect
 }
 
-ssize_t rocket::tcp_socket::can_send_data(int milliseconds)
+ssize_t rocket::tcp_socket::can_send_data( std::chrono::milliseconds millis )
 {
     struct pollfd fds[1];
     fds[0].fd = sockfd_;
@@ -184,7 +186,7 @@ ssize_t rocket::tcp_socket::can_send_data(int milliseconds)
     fds[0].revents = 0;
 
     printf("Waiting for an event on the socket\n");
-    int ret = poll(fds, 1, milliseconds);
+    int ret = poll(fds, 1, millis.count() );
     int poll_errno = errno;
     printf("Received write event on socket [%d]\n", ret);
     
@@ -211,7 +213,7 @@ ssize_t rocket::tcp_socket::can_send_data(int milliseconds)
 }
 
 
-ssize_t rocket::tcp_socket::can_recv_data(int milliseconds)
+ssize_t rocket::tcp_socket::can_recv_data( std::chrono::milliseconds millis )
 {
     struct pollfd fds[1];
     fds[0].fd = sockfd_;
@@ -219,7 +221,7 @@ ssize_t rocket::tcp_socket::can_recv_data(int milliseconds)
     fds[0].revents = 0;
 
     printf("Waiting for an event on the socket\n");
-    int ret = poll(fds, 1, milliseconds);
+    int ret = poll(fds, 1, millis.count());
     int poll_errno = errno;
     printf("Received read event on socket [%d]\n", ret);
 

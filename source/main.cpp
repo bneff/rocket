@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string>
+#include <chrono>
 
 #include "rocket/tcp_socket.h"
 
@@ -16,7 +17,7 @@ int main(int argc, char *argv[])
         rocket::tcp_socket client = socket.accept();
         auto peer = client.get_peer_address();
         printf("Accepted connection from %s : %d\n", peer.first.c_str(), peer.second );
-        client.can_recv_data(10000);
+        client.can_recv_data(std::chrono::seconds(10));
     }
     return 0;
 }
