@@ -15,7 +15,6 @@
 
 #include "rocket/tcp_socket.h"
 
-
 rocket::tcp_socket::tcp_socket() :
     sockfd_(0)
 {
@@ -23,6 +22,10 @@ rocket::tcp_socket::tcp_socket() :
 
 rocket::tcp_socket::~tcp_socket()
 {
+    //shutdown() will trigger an event and unblock any
+    //current calls to can_recv_data and can_send_data
+    shutdown( SHUT_WR );
+    close();
 }
 
 rocket::tcp_socket::tcp_socket(rocket::tcp_socket&& other) :
@@ -40,6 +43,35 @@ rocket::tcp_socket& rocket::tcp_socket::operator=(rocket::tcp_socket&& other)
         other.sockfd_ = 0;
     }
     return *this;
+}
+
+ssize_t rocket::tcp_socket::close()
+{
+    if( sockfd_ > 0 )
+    {
+        //close can return an error, but on linux, even if it returns
+        //non-zero, the fd has been closed.  So just ignore all errors.
+        //FYI there is much reading on this subject - google it
+        ::close(sockfd_);
+        sockfd_ = 0;
+
+        //Memory barrier to sync other threads in a send() or recv()
+        __sync_synchronize;
+
+    }
+}
+
+//Need to check for sockfd_ > 0 after poll() returns
+ssize_t rocket::tcp_socket::send
+ssize_t rocket::tcp_socket::recv
+
+ssize_t rocket::tcp_socket::shutdown( int how )
+{
+    if( sockfd_ > 0 )
+    {
+        ::shutdown(sockfd_, how);
+        printf("shutdown: %s\n", strerror(errno));
+    }
 }
 
 ssize_t rocket::tcp_socket::bind(std::string host, uint16_t port )
@@ -72,6 +104,7 @@ ssize_t rocket::tcp_socket::bind(std::string host, uint16_t port )
     setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
 
     ssize_t ret = ::bind(sockfd_, res->ai_addr, res->ai_addrlen);
+    freeaddrinfo(res);
     if( ret != 0 )
         printf("Error: %s\n", strerror(errno));
     return ret;
@@ -103,77 +136,46 @@ rocket::tcp_socket rocket::tcp_socket::accept()
     return std::move(client_socket);
 }
 
-std::pair <std::string, uint16_t> rocket::tcp_socket::get_peer_address()
+std::pair<std::string, uint16_t> rocket::tcp_socket::get_peer_address()
 {
     //Don't call this on unconnected sockets e.g. server sockets
-    
     char s[INET6_ADDRSTRLEN];
     struct sockaddr_storage remote_peer;
     socklen_t addr_len = sizeof(remote_peer);
 
-    
-    if( getpeername(sockfd_, (struct sockaddr*)&remote_peer, &addr_len) != 0 )
+    if( getpeername(sockfd_, (struct sockaddr*)&remote_peer, &addr_len) == 0 )
+    {
+        return address_helper( &remote_peer );
+    }
+    else
     {
         printf("Error: %s\n", strerror(errno));
         return std::make_pair("",0);
     }
+}
 
-    uint16_t port = 0;
-    void* tmp = nullptr;
-    switch(remote_peer.ss_family)
+std::pair<std::string, uint16_t> rocket::tcp_socket::get_local_address()
+{
+    char s[INET6_ADDRSTRLEN];
+    struct sockaddr_storage local;
+    socklen_t addr_len = sizeof(local);
+
+    if( getsockname(sockfd_, (struct sockaddr*)&local, &addr_len) == 0 )
     {
-        case AF_INET:
-            tmp = &(((struct sockaddr_in *)&remote_peer)->sin_addr);
-            port = ntohs(((struct sockaddr_in *)&remote_peer)->sin_port);
-            break;
-        case AF_INET6:
-            tmp = &(((struct sockaddr_in6 *)&remote_peer)->sin6_addr);
-            port = ntohs(((struct sockaddr_in6 *)&remote_peer)->sin6_port);
-            break;
-
-        default:
-            printf("Unknown ss_family in get_peer_address()\n");
-            return std::make_pair("",0);
+        return address_helper( &local );
     }
-    std::string ip = inet_ntop(remote_peer.ss_family, tmp, s, sizeof(s) );
-    return std::make_pair(ip, port);
+    else
+    {
+        printf("Error: %s\n", strerror(errno));
+        return std::make_pair("",0);
+    }
 }
 
 ssize_t rocket::tcp_socket::connect( std::string host, uint16_t port, int timeout )
 {
-    struct pollfd fds[1];
-    fds[0].fd = sockfd_;
-    fds[0].events = POLLOUT;
-    fds[0].revents = 0;
-
-    printf("Waiting for an event on the socket\n");
-    int ret = poll(fds, 1, timeout);
-    int poll_errno = errno;
-    printf("Received write event on socket [%d]\n", ret);
-    printf("Error: %s\n", strerror(poll_errno));
-    
-    //if ret == 0, we timed out in poll
-    //if ret == 1, then an event occured on our fd and we need to check it.
-    //if ret == -1, then some error occured.  Check errno
-    //if the remote side shut down their socket, or connect() doesn't complete, POLLHUP will be active.
-    //if( fds[0].revents & ( POLLERR | POLLHUP | POLLNVAL) )
-
-    if( ret == -1 )
-    {
-        printf("Error: %s\n", strerror(poll_errno));
-        return -1;
-    }
-    if( fds[0].revents & POLLHUP )
-    {
-        printf("Unable to connect()\n");
-        return -1;
-    }
-    else
-    {
-        return fds[0].revents & POLLOUT;
-    }
-
+    //connect
 }
+
 ssize_t rocket::tcp_socket::can_send_data(int milliseconds)
 {
     struct pollfd fds[1];
@@ -237,4 +239,28 @@ ssize_t rocket::tcp_socket::can_recv_data(int milliseconds)
         //If POLLIN is not set, this returns 0, same as a timeout.
         return fds[0].revents & POLLIN;
     }
+}
+
+std::pair<std::string, uint16_t> rocket::tcp_socket::address_helper( struct sockaddr_storage* storage )
+{
+    char s[INET6_ADDRSTRLEN];
+    uint16_t port = 0;
+    void* tmp = nullptr;
+    switch(storage->ss_family)
+    {
+        case AF_INET:
+            tmp = &(((struct sockaddr_in *)storage)->sin_addr);
+            port = ntohs(((struct sockaddr_in *)storage)->sin_port);
+            break;
+        case AF_INET6:
+            tmp = &(((struct sockaddr_in6 *)storage)->sin6_addr);
+            port = ntohs(((struct sockaddr_in6 *)storage)->sin6_port);
+            break;
+
+        default:
+            printf("Unknown ss_family in get_peer_address()\n");
+            return std::make_pair("",0);
+    }
+    std::string ip = inet_ntop(storage->ss_family, tmp, s, sizeof(s) );
+    return std::make_pair(ip, port);
 }
