@@ -99,6 +99,7 @@ ssize_t rocket::tcp_socket::bind(std::string host, uint16_t port )
         if( sockfd_ <= 0 )
         {
             printf("Error: %s\n", strerror(err_socket));
+            return -1;
         }
     }
 

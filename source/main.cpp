@@ -3,12 +3,18 @@
 #include <chrono>
 
 #include "rocket/tcp_socket.h"
+#include "rocket/resolver.h"
 
 int main(int argc, char *argv[])
 {
+    auto results = rocket::resolver::resolve("www.google.com", "80");
+    for( auto result : results )
+    {
+        printf("ip: %s\n", result.c_str());
+    }
+
     rocket::tcp_socket socket;
-    //socket.bind("::", 0);
-    socket.bind("::", 1234);
+    socket.bind("::", 1234);  //Set port to 0 for ephemeral
     auto my_addr = socket.get_local_address();
     printf("Socket bound to %s %d\n", my_addr.first.c_str(), my_addr.second );
     socket.listen();
