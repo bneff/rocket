@@ -12,7 +12,6 @@
 #include <poll.h>
 #include <arpa/inet.h>
 #include <utility>
-
 #include <chrono>
 
 #include "rocket/tcp_socket.h"
