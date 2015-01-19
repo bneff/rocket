@@ -9,15 +9,16 @@
 
 #include "rocket/resolver.h"
 
-rocket::resolver::resolver()
+rocket::resolver::resolver( int family )
 {
+    family_ = family;
 }
 
 rocket::resolver::~resolver()
 {
 }
 
-std::vector<std::string> rocket::resolver::resolve( std::string hostname, std::string service )
+std::vector<std::string> rocket::resolver::resolve( std::string hostname, std::string service, int family )
 {
     std::vector<std::string> results;
 
@@ -26,8 +27,9 @@ std::vector<std::string> rocket::resolver::resolve( std::string hostname, std::s
     char ipstr[INET6_ADDRSTRLEN];
 
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC; // AF_INET or AF_INET6 to force version
+    hints.ai_family = family; // AF_INET,AF_INET6,AF_UNSPEC
     hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_ADDRCONFIG;
 
     if ((status = getaddrinfo(hostname.c_str(), service.c_str(), &hints, &res)) != 0)
     {
@@ -39,19 +41,17 @@ std::vector<std::string> rocket::resolver::resolve( std::string hostname, std::s
         void *addr;
         if (p->ai_family == AF_INET)
         {
-            // IPv4
             struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
             addr = &(ipv4->sin_addr);
         }
         else
         {
-            // IPv6
             struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)p->ai_addr;
             addr = &(ipv6->sin6_addr);
         }
 
         inet_ntop(p->ai_family, addr, ipstr, sizeof(ipstr));
-        results.emplace_back( ipstr );
+        results.push_back( ipstr );
     }
     freeaddrinfo(res);
     return results;

@@ -4,8 +4,6 @@
 //SOMAXCONN
 #include <sys/socket.h>
 
-#include <chrono>
-
 namespace rocket
 {
 
@@ -41,11 +39,10 @@ public:
     virtual std::pair<std::string, uint16_t> get_peer_address();
     virtual std::pair<std::string, uint16_t> get_local_address();
 
-    //virtual std::list<std::pair<std::string, uint16_t>> resolve( std::string hostname, std::string service );
-
 private:
 
     std::pair<std::string, uint16_t> address_helper( struct sockaddr_storage* s );
+    ssize_t create_socket( int address_family );
 
     size_t sockfd_;
 };

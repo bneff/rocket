@@ -91,24 +91,20 @@ ssize_t rocket::tcp_socket::bind(std::string host, uint16_t port )
         return -1;
     }
 
-    if( sockfd_ <= 0 )
+    if( create_socket(res->ai_family) != 0 )
     {
-        sockfd_ = socket(res->ai_family, SOCK_STREAM, 0);
-        int err_socket = errno;
-        if( sockfd_ <= 0 )
-        {
-            printf("Error: %s\n", strerror(err_socket));
-            return -1;
-        }
+        printf("Error: %s\n", strerror(errno));
+        return -1;
     }
 
     int optval = 1;
     setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
 
     ssize_t ret = ::bind(sockfd_, res->ai_addr, res->ai_addrlen);
-    freeaddrinfo(res);
     if( ret != 0 )
         printf("Error: %s\n", strerror(errno));
+
+    freeaddrinfo(res);
     return ret;
 }
 
@@ -151,7 +147,6 @@ std::pair<std::string, uint16_t> rocket::tcp_socket::get_peer_address()
     }
     else
     {
-        printf("Error: %s\n", strerror(errno));
         return std::make_pair("",0);
     }
 }
@@ -168,14 +163,40 @@ std::pair<std::string, uint16_t> rocket::tcp_socket::get_local_address()
     }
     else
     {
-        printf("Error: %s\n", strerror(errno));
         return std::make_pair("",0);
     }
 }
 
 ssize_t rocket::tcp_socket::connect( std::string host, uint16_t port, std::chrono::milliseconds millis )
 {
-    //connect
+    struct addrinfo hints, *res;
+    int status;
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC; //Let the OS figure it out for us
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_NUMERICHOST; //Fill in our ip in res to use in bind()
+
+    if ((status = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res)) != 0) {
+        printf("getaddrinfo: %s\n", gai_strerror(status));
+        return -1;
+    }
+
+    //Create the socket now that we know the address type
+    if( create_socket(res->ai_family) != 0 )
+    {
+        return -1;
+    }
+
+    ssize_t ret = ::connect(sockfd_, res->ai_addr, res->ai_addrlen);
+    if( ret != 0 )
+    {
+        if( errno == EINPROGRESS || errno == EALREADY )
+        {
+            return can_send_data( millis );
+        }
+    }
+    return ret;
 }
 
 ssize_t rocket::tcp_socket::can_send_data( std::chrono::milliseconds millis )
@@ -185,9 +206,7 @@ ssize_t rocket::tcp_socket::can_send_data( std::chrono::milliseconds millis )
     fds[0].events = POLLOUT;
     fds[0].revents = 0;
 
-    printf("Waiting for an event on the socket\n");
     int ret = poll(fds, 1, millis.count() );
-    int poll_errno = errno;
     printf("Received write event on socket [%d]\n", ret);
     
     //if ret == 0, we timed out in poll
@@ -198,7 +217,7 @@ ssize_t rocket::tcp_socket::can_send_data( std::chrono::milliseconds millis )
 
     if( ret == -1 )
     {
-        printf("Error: %s\n", strerror(poll_errno));
+        printf("Error: %s\n", strerror(errno));
         return -1;
     }
     if( fds[0].revents & POLLHUP )
@@ -220,17 +239,12 @@ ssize_t rocket::tcp_socket::can_recv_data( std::chrono::milliseconds millis )
     fds[0].events = POLLIN | POLLPRI;
     fds[0].revents = 0;
 
-    printf("Waiting for an event on the socket\n");
     int ret = poll(fds, 1, millis.count());
-    int poll_errno = errno;
     printf("Received read event on socket [%d]\n", ret);
-
-
-    //We might want to add logic to check revents for POLLERR, POLLHUP, and POLLNVAL and throw appropriately
 
     if( ret == -1 )
     {
-        printf("Error: %s\n", strerror(poll_errno));
+        printf("Error: %s\n", strerror(errno));
         return ret;
     }
     else
@@ -241,6 +255,20 @@ ssize_t rocket::tcp_socket::can_recv_data( std::chrono::milliseconds millis )
         //If POLLIN is not set, this returns 0, same as a timeout.
         return fds[0].revents & POLLIN;
     }
+}
+
+ssize_t rocket::tcp_socket::create_socket( int address_family )
+{
+    if( sockfd_ <= 0 )
+    {
+        sockfd_ = socket(address_family, SOCK_STREAM, 0);
+        if( sockfd_ <= 0 )
+        {
+            return -1;
+        }
+        fcntl(sockfd_, F_SETFL, O_NONBLOCK);
+    }
+    return 0;
 }
 
 std::pair<std::string, uint16_t> rocket::tcp_socket::address_helper( struct sockaddr_storage* storage )

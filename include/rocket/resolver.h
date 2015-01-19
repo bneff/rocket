@@ -11,14 +11,14 @@ class resolver
 {
 public:
 
-    resolver();
+    resolver( int family = AF_UNSPEC );
     virtual ~resolver();
     
-    static std::vector<std::string> resolve( std::string hostname, std::string service );
-
+    static std::vector<std::string> resolve( std::string hostname, std::string service, int family=AF_UNSPEC );
 
 private:
 
+    int family_;
 };
 
 };

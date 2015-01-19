@@ -7,11 +7,19 @@
 
 int main(int argc, char *argv[])
 {
-    auto results = rocket::resolver::resolve("www.google.com", "80");
+    auto results = rocket::resolver::resolve("www.google.com", "80", AF_UNSPEC);
     for( auto result : results )
     {
         printf("ip: %s\n", result.c_str());
     }
+
+    rocket::tcp_socket client;
+    
+    if( client.connect( results[0], 80, std::chrono::seconds(10) ) )
+        printf("connected\n");
+    else
+        printf("not connected\n");
+
 
     rocket::tcp_socket socket;
     socket.bind("::", 1234);  //Set port to 0 for ephemeral
