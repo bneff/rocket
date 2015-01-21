@@ -62,16 +62,11 @@ ssize_t rocket::tcp_socket::close()
     }
 }
 
-//Need to check for sockfd_ > 0 after poll() returns
-//ssize_t rocket::tcp_socket::send
-//ssize_t rocket::tcp_socket::recv
-
 ssize_t rocket::tcp_socket::shutdown( int how )
 {
     if( sockfd_ > 0 )
     {
         ::shutdown(sockfd_, how);
-        printf("shutdown: %s\n", strerror(errno));
     }
 }
 
@@ -118,17 +113,16 @@ ssize_t rocket::tcp_socket::listen( size_t max_connections )
 
 rocket::tcp_socket rocket::tcp_socket::accept()
 {
-    struct sockaddr_storage remote_peer;
-    socklen_t addr_len = sizeof(remote_peer);
     rocket::tcp_socket client_socket;
 
     // -1 will wait forever, turning this into a blocking call
     if( can_recv_data(std::chrono::milliseconds(-1) ) )
     {
-        ssize_t ret = ::accept(sockfd_, (struct sockaddr *)&remote_peer, &addr_len);
+        ssize_t ret = ::accept(sockfd_, NULL, 0);
         if( ret > 0 )
         {
             client_socket.sockfd_ = ret;
+            fcntl(client_socket.sockfd_, F_SETFL, O_NONBLOCK);
         }
     }
     return std::move(client_socket);
@@ -175,7 +169,7 @@ ssize_t rocket::tcp_socket::connect( std::string host, uint16_t port, std::chron
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC; //Let the OS figure it out for us
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_NUMERICHOST; //Fill in our ip in res to use in bind()
+    hints.ai_flags = AI_NUMERICHOST; //Don't do a DNS lookup
 
     if ((status = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res)) != 0) {
         printf("getaddrinfo: %s\n", gai_strerror(status));
@@ -199,6 +193,40 @@ ssize_t rocket::tcp_socket::connect( std::string host, uint16_t port, std::chron
     return ret;
 }
 
+ssize_t rocket::tcp_socket::send( void* data, size_t len, std::chrono::milliseconds millis )
+{
+    ssize_t ret = ::send(sockfd_, data, len, 0);
+    if( ret < 0 )
+    {
+        if( errno == EAGAIN || errno == EWOULDBLOCK )
+        {
+            ret = can_send_data( millis );
+            if( ret > 0 )
+            {
+                ret = ::send(sockfd_, data, len, 0);
+            }
+        }
+    }
+    return ret;
+}
+
+ssize_t rocket::tcp_socket::recv( void* data, size_t len, std::chrono::milliseconds millis )
+{
+    ssize_t ret = ::recv(sockfd_, data, len, 0);
+    if( ret < 0 )
+    {
+        if( errno == EAGAIN || errno == EWOULDBLOCK )
+        {
+            ret = can_recv_data( millis );
+            if( ret > 0 )
+            {
+                ret = ::recv(sockfd_, data, len, 0);
+            }
+        }
+    }
+    return ret;
+}
+
 ssize_t rocket::tcp_socket::can_send_data( std::chrono::milliseconds millis )
 {
     struct pollfd fds[1];
@@ -206,8 +234,6 @@ ssize_t rocket::tcp_socket::can_send_data( std::chrono::milliseconds millis )
     fds[0].events = POLLOUT;
     fds[0].revents = 0;
 
-    int ret = poll(fds, 1, millis.count() );
-    printf("Received write event on socket [%d]\n", ret);
     
     //if ret == 0, we timed out in poll
     //if ret == 1, then an event occured on our fd and we need to check it.
@@ -215,6 +241,7 @@ ssize_t rocket::tcp_socket::can_send_data( std::chrono::milliseconds millis )
     //if the remote side shut down their socket, or connect() doesn't complete, POLLHUP will be active.
     //if( fds[0].revents & ( POLLERR | POLLHUP | POLLNVAL) )
 
+    int ret = poll(fds, 1, millis.count() );
     if( ret == -1 )
     {
         printf("Error: %s\n", strerror(errno));
@@ -240,8 +267,6 @@ ssize_t rocket::tcp_socket::can_recv_data( std::chrono::milliseconds millis )
     fds[0].revents = 0;
 
     int ret = poll(fds, 1, millis.count());
-    printf("Received read event on socket [%d]\n", ret);
-
     if( ret == -1 )
     {
         printf("Error: %s\n", strerror(errno));
@@ -261,7 +286,7 @@ ssize_t rocket::tcp_socket::create_socket( int address_family )
 {
     if( sockfd_ <= 0 )
     {
-        sockfd_ = socket(address_family, SOCK_STREAM, 0);
+        sockfd_ = socket(address_family, SOCK_STREAM, 6);
         if( sockfd_ <= 0 )
         {
             return -1;
@@ -288,7 +313,7 @@ std::pair<std::string, uint16_t> rocket::tcp_socket::address_helper( struct sock
             break;
 
         default:
-            printf("Unknown ss_family in get_peer_address()\n");
+            printf("Unknown ss_family detected\n");
             return std::make_pair("",0);
     }
     std::string ip = inet_ntop(storage->ss_family, tmp, s, sizeof(s) );
