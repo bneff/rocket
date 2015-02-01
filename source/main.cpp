@@ -1,50 +1,37 @@
 #include <stdio.h>
-#include <string>
 #include <chrono>
+#include <string>
+#include <memory> //shared_ptr
 
 #include "rocket/tcp_socket.h"
 #include "rocket/resolver.h"
-
-#include <string.h>
+#include "rocket/http_response.h"
 
 int main(int argc, char *argv[])
 {
-    /*
-    auto results = rocket::resolver::resolve("www.google.com", "80", AF_UNSPEC);
+    //auto results = rocket::resolver::resolve("www.google.com", "80", AF_UNSPEC);
+    auto results = rocket::resolver::resolve("172.30.42.1", "80", AF_UNSPEC);
+    //auto results = rocket::resolver::resolve("192.168.1.1", "80", AF_UNSPEC);
     for( auto result : results )
     {
         printf("ip: %s\n", result.c_str());
     }
 
-    rocket::tcp_socket client;
+    std::shared_ptr<rocket::tcp_socket> client( new rocket::tcp_socket );
     
-    if( client.connect( results[0], 80, std::chrono::seconds(10) ) )
-        printf("connected\n");
-    else
-        printf("not connected\n");
-    */
-
-    rocket::tcp_socket socket;
-    socket.bind("::", 1234);  //Set port to 0 for ephemeral
-    auto my_addr = socket.get_local_address();
-    printf("Socket bound to %s %d\n", my_addr.first.c_str(), my_addr.second );
-    socket.listen();
-    while( true )
+    if( client->connect( results[0], 80, std::chrono::seconds(10) ) )
     {
-        rocket::tcp_socket client = socket.accept();
-        auto peer = client.get_peer_address();
-        printf("Accepted connection from %s : %d\n", peer.first.c_str(), peer.second );
-        char tmp[2048];
-        memset(tmp, 0, sizeof(tmp));
-        ssize_t bytes_received = client.recv(tmp, sizeof(tmp), std::chrono::seconds(10));
-        while( bytes_received > 0 )
-        {
-            printf("received %d bytes %s\n", bytes_received, &tmp);
-            client.send(tmp, bytes_received, std::chrono::seconds(10));
-            memset(tmp, 0, sizeof(tmp));
-            bytes_received = client.recv(tmp, sizeof(tmp), std::chrono::seconds(10));
-        }
-        //client.can_recv_data(std::chrono::seconds(10));
+        printf("connected to %s\n", results[0].c_str() );
+        std::string request = "GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n";
+        client->send(request.c_str(), request.length(), std::chrono::seconds(10));
+
+        rocket::http_response response;
+        response.read_response( client, std::chrono::seconds(10) );
     }
+    else
+    {
+        printf("failed to connect\n");
+    }
+
     return 0;
 }

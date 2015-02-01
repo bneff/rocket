@@ -193,7 +193,7 @@ ssize_t rocket::tcp_socket::connect( std::string host, uint16_t port, std::chron
     return ret;
 }
 
-ssize_t rocket::tcp_socket::send( void* data, size_t len, std::chrono::milliseconds millis )
+ssize_t rocket::tcp_socket::send( const void* data, size_t len, std::chrono::milliseconds millis )
 {
     ssize_t ret = ::send(sockfd_, data, len, 0);
     if( ret < 0 )

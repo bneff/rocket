@@ -30,7 +30,7 @@ public:
     //values of how = SHUT_RD, SHUT_WR, or SHUT_RDWR
     virtual ssize_t shutdown( int how );
 
-    virtual ssize_t send( void* data, size_t len, std::chrono::milliseconds millis );
+    virtual ssize_t send( const void* data, size_t len, std::chrono::milliseconds millis );
     virtual ssize_t recv( void* data, size_t len, std::chrono::milliseconds millis );
 
     virtual ssize_t can_send_data( std::chrono::milliseconds millis );

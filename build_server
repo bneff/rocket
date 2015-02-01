@@ -1,0 +1,1 @@
+g++ -std=c++11 source/tcp_socket.cpp -I./include/ tests/socket_test.cpp  source/resolver.cpp -o server
