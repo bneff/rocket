@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
         while( bytes_received > 0 )
         {
             printf("received %d bytes %s\n", bytes_received, &tmp);
-            std::string neff("HTTP/1.1 200 OK\r\nHeader1: temptemptemp\r\n  continuation\r\n\r\n");
+            std::string neff("HTTP/1.1 200 OK\r\nHeader1: temptemptemp\r\n  ,continuation\r\n\r\n");
             client.send(neff.c_str(), neff.length(), std::chrono::seconds(10));
 
             memset(tmp, 0, sizeof(tmp));

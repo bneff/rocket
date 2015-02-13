@@ -3,46 +3,55 @@
 
 #include <stdio.h>
 #include <string>
-#include <string.h> //strerror
-#include <algorithm> //find()
+#include <string.h>     //strerror
+#include <algorithm>    //find()
+#include <map>          //multimap
 
 #include "rocket/string_helpers.h"
 
+
 namespace rocket{
+
+//Going to use enum's to determine how to proceed in the loop vs return values.
+//This should help generalize when we are done vs. when we need to read again
+enum class HTTPIO : ssize_t
+{
+    ERROR = -10,
+    NEED_IO = 0,
+    EMPTY_LINE = 4,
+    END_OF_STARTLINE = 6,
+    END_OF_HEADER = 8,
+    END_OF_CHUNK = 10,
+    END_OF_BODY = 12,
+};
+    
 
 class http_response
 {
 public:
-    
+
+
+    //Could pass all of these into constructor to let caller decide max
     const size_t MAX_HEADER_SIZE = 4*1024;
-    //Could pass this into constructor
+    const size_t MAX_BODY_LENGTH = 1024*1024*32; //32MB Max
     const size_t INITIAL_STORAGE_SIZE = 128*1024;
+
     http_response()
     {
-        storage_.resize( 10*1024 );
         storage_.resize( INITIAL_STORAGE_SIZE );
     }
     ~http_response()
     {}
 
-    bool CheckMaxHeaderSize( size_t start, size_t end )
-    {
-        return (end-start) > MAX_HEADER_SIZE;
-    }
     //This method will read an entire response, so a large file make take some time.
-    //There will be a cap at N MBs
-    //tcp_socket is not copyable to must use shared_ptr
+    //tcp_socket is not copyable so must use shared_ptr
     ssize_t read_response( std::shared_ptr<rocket::tcp_socket> socket, std::chrono::milliseconds timeout )
     {
-
-        //1. Parse the Status-Line e.g. 'HTTP/1.1 200 OK'
-        //2. Parse the end of headers which would be \r\n\r\n
-        //3. Look for content-length, or chunked encoding
-        //4. Parse the respose body
-
+        std::string prev_header;
         size_t bytes_received = 0;
         size_t curr_position = 0;
-        while( socket->can_recv_data( std::chrono::seconds(10) ) )
+        size_t body_start = 0;
+        while( socket->can_recv_data( timeout ) )
         {
             if( storage_.capacity() - bytes_received < 1024 )
             {
@@ -55,50 +64,86 @@ public:
 
             if( bytes > 0 )
             {
-                printf("BYTES %d\n", bytes );
                 bytes_received += bytes;
-
-                auto start_it = storage_.begin() + curr_position;
-                auto end_it = storage_.begin() + bytes_received;
 
                 if( curr_position == 0 )
                 {
-                    ssize_t ret = process_status_line( start_it, end_it );
-                    if( ret > 0 )
-                    {
-                        curr_position += ret + 1;
-                        start_it = storage_.begin() + curr_position;
-                    }
-                    else if( ret == 0 )
+                    HTTPIO ret = process_status_line( storage_.data(), storage_.data() + bytes_received, curr_position );
+
+                    if( ret == HTTPIO::NEED_IO )
                         continue;
-                    else
+                    else if( ret < HTTPIO::NEED_IO )
                         break;
                 }
 
-                //If ret =< 2, then we may not have any headers, just \r\n
-                printf("DISTANCE SO FAR %d\n", std::distance(storage_.begin(), start_it) );
-                ssize_t ret = process_header_line( start_it, end_it );
-                while( ret > 2 )
+                if( body_start == 0 )
                 {
-                    curr_position += ret + 1;
-                    start_it = storage_.begin() + curr_position;
-                    printf("DISTANCE SO FAR %d\n", std::distance(storage_.begin(), start_it) );
-                    ret = process_header_line( start_it, end_it );
+                    HTTPIO ret = HTTPIO::ERROR;
+                    do
+                    {
+                        ret = process_header_line( storage_.data() + curr_position, storage_.data() + bytes_received, curr_position );
+                    }
+                    while( ret > HTTPIO::EMPTY_LINE );
+
+                    if( ret == HTTPIO::NEED_IO )
+                        continue;
+                    else if( ret < HTTPIO::NEED_IO )
+                        break;
+
+                    body_start = curr_position;
                 }
-                if( ret == 0 )
-                    continue;
-                else if( ret < 0 )
-                    break;
 
-                //AFTER THIS POINT WE ARE DONE WITH HEADERS
+                if( body_start > 0 )
+                {
+                    if( headers.find("transfer-encoding") != headers.end() )
+                    {
+                        HTTPIO ret = HTTPIO::ERROR;
+                        do
+                        {
+                            ret = process_chunked_body( storage_.data() + curr_position, storage_.data()+bytes_received, curr_position);
+                        }
+                        while( ret > HTTPIO::NEED_IO && ret < HTTPIO::END_OF_BODY );
+                        //The above is > NEED_IO as some chunked implementations add extra empty lines before the 0 chunk
+                        
+                        if( ret == HTTPIO::NEED_IO )
+                            continue;
+                        else if( ret < HTTPIO::NEED_IO )
+                            break;
 
-                curr_position += ret;
-                start_it = storage_.begin() + curr_position;
-                std::string body(start_it+1, end_it);
-                printf("BYTES IN BUFFER %d\n", std::distance(start_it+1, end_it) );
-                printf("BODY(%d): \n\"%s\"\n", body.size(), body.c_str() );
-                
+                        
+                        //////// CHECK FOR TRAILING HEADERS ///////////
+                        if( bytes_received > curr_position )
+                        {
+                            ret = HTTPIO::ERROR;
+                            do
+                            {
+                                ret = process_header_line( storage_.data() + curr_position, storage_.data() + bytes_received, curr_position );
+                            }
+                            while( ret > HTTPIO::EMPTY_LINE );
 
+                            //If process_header_line returns NEED_IO, we could also be at EOF so we're done.
+                            if( ret == HTTPIO::NEED_IO || ret == HTTPIO::EMPTY_LINE )
+                                break;
+                            else if( ret < HTTPIO::NEED_IO ) //ERROR
+                                break;
+                        }
+                        else
+                        {
+                            //Reached end of data - we're done
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        HTTPIO ret = process_body( storage_.data() + curr_position, storage_.data()+bytes_received, curr_position);
+                        if( ret > HTTPIO::EMPTY_LINE )
+                            break;
+                        if( ret == HTTPIO::NEED_IO )
+                            continue;
+                        else if( ret == HTTPIO::ERROR )
+                            break;
+                    }
+                }
             }
             else if( bytes == 0 )
             {
@@ -113,80 +158,179 @@ public:
         }
     }
 
-    ssize_t process_status_line( std::vector<char>::iterator start_it, std::vector<char>::iterator end_it )
+    HTTPIO process_status_line( const char* start, const char* end, size_t& position )
     {
+        auto statusline_end = std::find(start, end,'\n');
+        ssize_t distance = (statusline_end - start) + 1;
 
-        auto statusline_end_it = std::find(start_it, end_it,'\n');
-        ssize_t distance = std::distance(start_it, statusline_end_it);
         if( distance > MAX_HEADER_SIZE )
-            return -1;
+            return HTTPIO::ERROR;
 
-        if( statusline_end_it != end_it )
+        if( statusline_end != end )
         {
-            auto version_end = std::find(start_it, statusline_end_it, ' ');
-            version = string_helpers::strip(std::string(start_it, version_end ));
-            auto code_end = std::find(version_end+1, statusline_end_it, ' ');
+            auto version_end = std::find(start, statusline_end, ' ');
+            version = string_helpers::trim(std::string(start, version_end ));
+            auto code_end = std::find(version_end+1, statusline_end, ' ');
             status_code = std::stoi(std::string(version_end+1, code_end));
-            reason = string_helpers::strip(std::string(code_end+1, statusline_end_it));
+            reason = string_helpers::trim(std::string(code_end+1, statusline_end));
+            position += distance;
 
-            printf("\"%s %d %s\"\n", version.c_str(), status_code, reason.c_str() );
-            return distance;
+            return HTTPIO::END_OF_STARTLINE;
         }
         else
         {
-            return 0;
+            return HTTPIO::NEED_IO;
         }
     }
 
-    ssize_t process_header_line( std::vector<char>::iterator start_it, std::vector<char>::iterator end_it )
+    HTTPIO process_header_line( const char* start, const char* end, size_t& position )
     {
-
-
-        auto header_end_it = std::find(start_it, end_it,'\n');
-        ssize_t distance = std::distance(start_it, header_end_it);
-        printf("DISTANCE TO NEXT \\n: %d\n", distance );
+        auto header_end = std::find(start, end,'\n');
+        ssize_t distance = (header_end - start)+1;
 
         if( distance > MAX_HEADER_SIZE )
-            return -1;
+            return HTTPIO::ERROR;
 
-        if( header_end_it != end_it )
+        if( header_end != end )
         {
-            if( distance <= 2 )
+            position += distance;
+            if( std::isspace(start[0]) )
             {
-                //End of headers
-                printf("START OF BODY\n");
-                return distance;
-            }
+                //end of header, \r\n
+                if( distance <= 2 )
+                    return HTTPIO::EMPTY_LINE;
 
-            auto header_name_end = std::find(start_it, header_end_it, ':');
-            std::string key(start_it, header_name_end);
-            //If this lines start with a space or tab then this should be appened to the previous header
-            /*
-            if( key.find_first_not_of(" \t") != 0 )
+                //If starts with space or \t, this is a continuation
+                //and should be appended to the previous header value
+                (*prev_item_).second += string_helpers::trim(std::string(start, header_end-1));
+            }
+            else if( distance > 2 )
             {
-                printf("line is a continuation from previous header line\n");
-                //Search for current header key in map, strip and append the line
-            }
-            */
+                auto header_name_end = std::find(start, header_end, ':');
+                if( header_name_end == header_end )
+                    printf("WTF\n");
+                prev_item_ = headers.emplace_hint( prev_item_,
+                                    string_helpers::lowercase(string_helpers::trim(std::string(start, header_name_end))),
+                                    string_helpers::trim(std::string(header_name_end+1, header_end-1)));
 
-            std::string value(header_name_end+1, header_end_it-1 );
-            printf("Key: \"%s\" Value: \"%s\"\n", string_helpers::trim(key).c_str(), string_helpers::strip(value).c_str() );
-            return distance;
+                return HTTPIO::END_OF_HEADER;
+            }
         }
         else
         {
-            return 0;
+            return HTTPIO::NEED_IO;
         }
     }
+
+    HTTPIO process_body( const char* start, const char* end, size_t& position )
+    {
+
+        auto cl_header = headers.find("content-length");
+        if( cl_header != headers.end() )
+        {
+            size_t content_length = strtoul(cl_header->second.c_str(), NULL, 0);
+            size_t curr_content_size = end - start;
+            printf("BODY BYTES IN BUFFER %d\n", curr_content_size );
+            if( curr_content_size >= content_length )
+            {
+                std::string body(start, end);
+                printf("BODY(%d): \n\"%s\"\n", body.size(), body.c_str() );
+                position += curr_content_size;
+                return HTTPIO::END_OF_BODY;
+            }
+            else
+            {
+                return HTTPIO::NEED_IO;
+            }
+        }
+
+    }
+
+    HTTPIO process_chunked_body( const char* start, const char* end, size_t& position )
+    {
+        auto size_end = std::find(start, end,'\n');
+        if( size_end != end )
+        {
+            std::string chunk_size_str = string_helpers::trim(std::string(start, size_end));
+            std::string extension;
+
+            //This is just a \r\n line
+            if( chunk_size_str.length() == 0 )
+            {
+                //Some chunked implementations send a newline before the 0 chunk.
+                position += (size_end - start)+1;
+                return HTTPIO::EMPTY_LINE;
+            }
+
+            //Parse the ;chunk-extension if any
+            auto extension_start = std::find(start, size_end, ';');
+            if( extension_start != size_end )
+            {
+                extension = string_helpers::trim(std::string(extension_start, size_end-1));
+                chunk_size_str = std::string(start, extension_start);
+            }
+
+            //Check if all the chars are valid HEX
+            if( std::all_of(chunk_size_str.begin(), chunk_size_str.end(), ::isxdigit) )
+            {
+                size_t chunk_size = std::stoul(chunk_size_str, nullptr, 16);
+                
+                //Last chunk, we are done
+                if( chunk_size == 0 )
+                {
+                    position += (size_end - start)+1;
+                    return HTTPIO::END_OF_BODY;
+                }
+
+                //Make sure there is no off-by-one here
+                if( end - size_end < chunk_size )
+                {
+                    return HTTPIO::NEED_IO;
+                }
+                else
+                {
+                    auto chunk_end = std::find(size_end+chunk_size, end,'\n');
+                    if( chunk_end != end )
+                    {
+                        position += (chunk_end - start)+1;
+                        return HTTPIO::END_OF_CHUNK;
+                    }
+                    else
+                    {
+                        return HTTPIO::NEED_IO;
+                    }
+                }
+            }
+            else
+            {
+                //Chunk chars are not valid hex
+                return HTTPIO::ERROR;
+            }
+        }
+        else
+        {
+            return HTTPIO::NEED_IO;
+        }
+    }
+
+    ssize_t process_multipart_body( const char* start, const char* end )
+    {
+    }
+
+    //std::string read_body()
+    //{
+    //}
 
     uint16_t status_code;
     std::string reason;
     std::string version;
 
+    std::multimap<std::string, std::string> headers;
+
 private:
 
     std::vector<char> storage_;
-
+    std::multimap<std::string, std::string>::iterator prev_item_ = headers.end();
 };
 };
 #endif

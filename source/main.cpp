@@ -10,8 +10,9 @@
 int main(int argc, char *argv[])
 {
     //auto results = rocket::resolver::resolve("www.google.com", "80", AF_UNSPEC);
-    auto results = rocket::resolver::resolve("172.30.42.1", "80", AF_UNSPEC);
-    //auto results = rocket::resolver::resolve("192.168.1.1", "80", AF_UNSPEC);
+    //auto results = rocket::resolver::resolve("172.30.42.1", "80", AF_UNSPEC);
+    auto results = rocket::resolver::resolve("192.168.1.1", "80", AF_UNSPEC);
+    //auto results = rocket::resolver::resolve("www.pelco.com", "80", AF_UNSPEC);
     for( auto result : results )
     {
         printf("ip: %s\n", result.c_str());
