@@ -14,7 +14,7 @@ public:
     resolver( int family = AF_UNSPEC );
     virtual ~resolver();
     
-    static std::vector<std::string> resolve( std::string hostname, std::string service, int family=AF_UNSPEC );
+    static std::vector<std::string> resolve( std::string hostname, std::string service, int family, std::string& error_string );
 
 private:
 

@@ -6,6 +6,7 @@
 #include <string.h>     //strerror
 #include <algorithm>    //find()
 #include <map>          //multimap
+#include <list>
 
 #include "rocket/string_helpers.h"
 
@@ -207,8 +208,6 @@ public:
             else if( distance > 2 )
             {
                 auto header_name_end = std::find(start, header_end, ':');
-                if( header_name_end == header_end )
-                    printf("WTF\n");
                 prev_item_ = headers.emplace_hint( prev_item_,
                                     string_helpers::lowercase(string_helpers::trim(std::string(start, header_name_end))),
                                     string_helpers::trim(std::string(header_name_end+1, header_end-1)));
@@ -230,11 +229,9 @@ public:
         {
             size_t content_length = strtoul(cl_header->second.c_str(), NULL, 0);
             size_t curr_content_size = end - start;
-            printf("BODY BYTES IN BUFFER %d\n", curr_content_size );
             if( curr_content_size >= content_length )
             {
-                std::string body(start, end);
-                printf("BODY(%d): \n\"%s\"\n", body.size(), body.c_str() );
+                body_offsets_.push_back( std::make_pair( position, position+curr_content_size) );
                 position += curr_content_size;
                 return HTTPIO::END_OF_BODY;
             }
@@ -292,6 +289,12 @@ public:
                     auto chunk_end = std::find(size_end+chunk_size, end,'\n');
                     if( chunk_end != end )
                     {
+                        size_t end_of_chunk = position+(chunk_end-start);
+                        if( std::isspace(storage_[end_of_chunk]) )
+                        {
+                            --end_of_chunk;
+                        }
+                        body_offsets_.push_back( std::make_pair( position+(size_end - start)+1, end_of_chunk ) );
                         position += (chunk_end - start)+1;
                         return HTTPIO::END_OF_CHUNK;
                     }
@@ -317,9 +320,15 @@ public:
     {
     }
 
-    //std::string read_body()
-    //{
-    //}
+    std::string get_body()
+    {
+        std::string body;
+        for( auto offset : body_offsets_ )
+        {
+            body += std::string(storage_.data()+offset.first, storage_.data()+offset.second);
+        }
+        return std::move(body);
+    }
 
     uint16_t status_code;
     std::string reason;
@@ -329,8 +338,10 @@ public:
 
 private:
 
+
     std::vector<char> storage_;
     std::multimap<std::string, std::string>::iterator prev_item_ = headers.end();
+    std::list< std::pair<size_t, size_t> > body_offsets_;
 };
 };
 #endif

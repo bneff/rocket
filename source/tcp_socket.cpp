@@ -81,14 +81,17 @@ ssize_t rocket::tcp_socket::bind(std::string host, uint16_t port )
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE; //Fill in our ip in res to use in bind()
 
-    if ((status = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res)) != 0) {
+    if ((status = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res)) != 0)
+    {
         printf("getaddrinfo: %s\n", gai_strerror(status));
+        freeaddrinfo(res);
         return -1;
     }
 
     if( create_socket(res->ai_family) != 0 )
     {
         printf("Error: %s\n", strerror(errno));
+        freeaddrinfo(res);
         return -1;
     }
 
@@ -173,16 +176,19 @@ ssize_t rocket::tcp_socket::connect( std::string host, uint16_t port, std::chron
 
     if ((status = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res)) != 0) {
         printf("getaddrinfo: %s\n", gai_strerror(status));
+        freeaddrinfo(res);
         return -1;
     }
 
     //Create the socket now that we know the address type
     if( create_socket(res->ai_family) != 0 )
     {
+        freeaddrinfo(res);
         return -1;
     }
 
     ssize_t ret = ::connect(sockfd_, res->ai_addr, res->ai_addrlen);
+    freeaddrinfo(res);
     if( ret != 0 )
     {
         if( errno == EINPROGRESS || errno == EALREADY )

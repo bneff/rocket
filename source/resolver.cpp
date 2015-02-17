@@ -18,7 +18,7 @@ rocket::resolver::~resolver()
 {
 }
 
-std::vector<std::string> rocket::resolver::resolve( std::string hostname, std::string service, int family )
+std::vector<std::string> rocket::resolver::resolve( std::string hostname, std::string service, int family, std::string& error_string )
 {
     std::vector<std::string> results;
 
@@ -33,9 +33,10 @@ std::vector<std::string> rocket::resolver::resolve( std::string hostname, std::s
 
     if ((status = getaddrinfo(hostname.c_str(), service.c_str(), &hints, &res)) != 0)
     {
-        printf("getaddrinfo: %s\n", gai_strerror(status));
+        error_string = gai_strerror(status);
         return results;
     }
+
     for(p = res;p != NULL; p = p->ai_next)
     {
         void *addr;
