@@ -13,8 +13,7 @@
 
 namespace rocket{
 
-//Going to use enum's to determine how to proceed in the loop vs return values.
-//This should help generalize when we are done vs. when we need to read again
+
 enum class HTTPIO : ssize_t
 {
     ERROR = -10,
@@ -209,7 +208,8 @@ public:
             {
                 auto header_name_end = std::find(start, header_end, ':');
                 prev_item_ = headers.emplace_hint( prev_item_,
-                                    string_helpers::lowercase(string_helpers::trim(std::string(start, header_name_end))),
+                                    string_helpers::trim(std::string(start, header_name_end)),
+                                    //string_helpers::lowercase(string_helpers::trim(std::string(start, header_name_end))),
                                     string_helpers::trim(std::string(header_name_end+1, header_end-1)));
 
                 return HTTPIO::END_OF_HEADER;
@@ -334,7 +334,7 @@ public:
     std::string reason;
     std::string version;
 
-    std::multimap<std::string, std::string> headers;
+    std::multimap<std::string, std::string, string_helpers::ci_less> headers;
 
 private:
 

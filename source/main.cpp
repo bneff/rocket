@@ -46,6 +46,8 @@ int main(int argc, char *argv[])
             printf("%s: %s\n", header.first.c_str(), header.second.c_str() );
         }
 
+        printf("CASE-INSENSITIVE FIND: %s\n", (response.headers.find("content-LENGTH"))->second.c_str() );
+
         std::string body = response.get_body();
         printf("SIZE %d\n", body.length() );
         printf("%s\n", body.c_str());
