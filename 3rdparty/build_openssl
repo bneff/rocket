@@ -1,0 +1,22 @@
+
+VERSION="1.0.2"
+
+if [ -d openssl ]; then
+    rm -rf openssl
+fi
+
+mkdir openssl
+
+if [ -f openssl-${VERSION}.tar.gz ]; then
+    tar xvf openssl-${VERSION}.tar.gz -C ./openssl --strip-components=1
+    pushd openssl
+    #./config shared zlib-dynamic enable-ec_nistp_64_gcc_128
+    ./config shared
+    make depend
+    make
+    popd
+fi
+
+if [ ! -f ca-bundle.crt ]; then
+    ./mk-ca-bundle.pl
+fi

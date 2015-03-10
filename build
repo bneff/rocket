@@ -1,1 +1,13 @@
-g++ -std=c++11 source/tcp_socket.cpp -I./include/ source/main.cpp  source/resolver.cpp -o socket
+g++ -std=c++11 \
+source/tcp_socket.cpp \
+source/tls_socket.cpp \
+source/main.cpp  \
+source/resolver.cpp \
+-I./3rdparty/openssl/include \
+-I./3rdparty/openssl/crypto \
+-I./include/  \
+-L./3rdparty/openssl/ \
+-Wl,-rpath=./3rdparty/openssl/ \
+-lssl \
+-lcrypto \
+-o socket

@@ -23,7 +23,7 @@ rocket::tcp_socket::tcp_socket() :
 
 rocket::tcp_socket::~tcp_socket()
 {
-    //shutdown() will trigger an event and unblock any
+    //shutdown() will trigger an poll event and unblock any
     //current calls to can_recv_data and can_send_data
     shutdown( SHUT_WR );
     close();
@@ -166,6 +166,12 @@ std::pair<std::string, uint16_t> rocket::tcp_socket::get_local_address()
 
 ssize_t rocket::tcp_socket::connect( std::string host, uint16_t port, std::chrono::milliseconds millis )
 {
+    if( sockfd_ > 0 )
+    {
+        shutdown( SHUT_RDWR );
+        close();
+    }
+
     struct addrinfo hints, *res;
     int status;
 

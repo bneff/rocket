@@ -51,6 +51,7 @@ public:
         size_t bytes_received = 0;
         size_t curr_position = 0;
         size_t body_start = 0;
+        storage_.clear();
         while( socket->can_recv_data( timeout ) )
         {
             if( storage_.capacity() - bytes_received < 1024 )

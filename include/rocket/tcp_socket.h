@@ -10,6 +10,7 @@ namespace rocket
 
 class tcp_socket
 {
+    friend class tls_socket;
 public:
 
     tcp_socket(const tcp_socket&) = delete;
@@ -39,7 +40,7 @@ public:
     virtual std::pair<std::string, uint16_t> get_peer_address();
     virtual std::pair<std::string, uint16_t> get_local_address();
 
-private:
+protected:
 
     std::pair<std::string, uint16_t> address_helper( struct sockaddr_storage* s );
     ssize_t create_socket( int address_family );
