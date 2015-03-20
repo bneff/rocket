@@ -39,10 +39,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 int main(int argc, char *argv[])
 {
-    //std::string host = "www.google.com";
-    //std::string port = "443";
-    std::string host = "127.0.0.1";
-    std::string port = "1234";
+    std::string host = "www.google.com";
+    std::string port = "443";
+    //std::string host = "127.0.0.1";
+    //std::string port = "1234";
 
     std::string error_string;
     auto results = rocket::resolver::resolve(host, port, AF_UNSPEC, error_string);
@@ -61,7 +61,7 @@ int main(int argc, char *argv[])
 
     rocket::tls_init init;
     std::unique_ptr<rocket::tls_socket> client( new rocket::tls_socket );
-    client->hostname = "a.foo.com";
+    client->hostname = host;
     
     for( auto result : results )
     {
