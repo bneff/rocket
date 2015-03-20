@@ -1,3 +1,29 @@
+/*
+Copyright (c) 2015, Bryan Neff
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. The name of the author may not be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
 #ifndef rocket_tls_socket
 #define rocket_tls_socket
 
@@ -6,63 +32,11 @@
 #include "rocket/tcp_socket.h"
 
 #include "openssl/ssl.h"
-#include "openssl/err.h"
 
-extern "C"
-{
-    struct CRYPTO_dynlock_value
-    {
-        std::mutex mutex;
-    };
-}
+
 
 namespace rocket
 {
-
-static std::mutex* openssl_mutexes_;
-static std::mutex tls_init_lock;
-
-class tls_init
-{
-
-public:
-
-    tls_init()
-    {
-        std::lock_guard<std::mutex> lock(tls_init_lock);
-        tls_init_lock.lock();
-        SSL_load_error_strings();   // readable error messages
-        SSL_library_init();         // initialize library
-        openssl_mutexes_ = new std::mutex[CRYPTO_num_locks()];
-        CRYPTO_set_locking_callback(&lock_cb);
-    }
-
-    virtual ~tls_init()
-    {
-        std::lock_guard<std::mutex> lock(tls_init_lock);
-        ERR_free_strings();
-        CRYPTO_set_locking_callback(NULL);
-        delete [] openssl_mutexes_;
-    }
-
-    static void lock_cb(int mode, int n, const char* file, int line)
-    {
-        if( mode & CRYPTO_LOCK )
-            openssl_mutexes_[n].lock();
-        else
-            openssl_mutexes_[n].unlock();
-    }
-
-    /*
-    static struct CRYPTO_dynlock_value* dynlock_create(const char* file, int line);
-    static void dynlock(int mode, struct CRYPTO_dynlock_value* lock, const char* file, int line);
-    static void dynlock_destroy(struct CRYPTO_dynlock_value* lock, const char* file, int line);V
-    */
-
-private:
-
-};
-
 
 class tls_socket : public tcp_socket
 {
@@ -80,21 +54,24 @@ public:
     virtual ssize_t connect( std::string host, uint16_t port, std::chrono::milliseconds millis );
     virtual ssize_t close();
     virtual ssize_t bind( std::string host, uint16_t port );
-    virtual tcp_socket accept();
-    //values of how = SHUT_RD, SHUT_WR, or SHUT_RDWR
-    virtual ssize_t shutdown( int how );
+    virtual std::unique_ptr<tcp_socket> accept();
+    virtual ssize_t shutdown( int how ); //values of how = SHUT_RD, SHUT_WR, or SHUT_RDWR
 
     virtual ssize_t send( const void* data, size_t len, std::chrono::milliseconds millis );
     virtual ssize_t recv( void* data, size_t len, std::chrono::milliseconds millis );
 
     virtual ssize_t handle_error( ssize_t ssl_return_code );
 
+    ssize_t private_key( std::string path );
+    ssize_t public_key( std::string path );
+
+    std::string tls_info();
+
     std::string hostname;
     bool verify_hostname = true;
 
 private:
 
-    SSL_CTX* ctx_ = nullptr;
     SSL* ssl_ = nullptr;
     std::mutex lock_;
 
