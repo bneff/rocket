@@ -60,7 +60,7 @@ public:
     //Could pass all of these into constructor to let caller decide max
     const size_t MAX_HEADER_SIZE = 4*1024;
     const size_t MAX_BODY_LENGTH = 1024*1024*32; //32MB Max
-    const size_t INITIAL_STORAGE_SIZE = 128*1024;
+    const size_t INITIAL_STORAGE_SIZE = 512*1024;
 
     http_response()
     {
@@ -82,7 +82,7 @@ public:
             if( storage_.capacity() - bytes_received < 1024 )
             {
                 size_t new_size = storage_.capacity() + 128*1024;
-                printf("re-sizing storage to %d bytes\n", new_size);
+                printf("re-sizing storage to %zu bytes\n", new_size);
                 storage_.resize( new_size );
             }
 
@@ -130,13 +130,11 @@ public:
                         }
                         while( ret > HTTPIO::NEED_IO && ret < HTTPIO::END_OF_BODY );
                         //The above is > NEED_IO as some chunked implementations add extra empty lines before the 0 chunk
-                        
                         if( ret == HTTPIO::NEED_IO )
                             continue;
                         else if( ret < HTTPIO::NEED_IO )
                             break;
 
-                        
                         //////// CHECK FOR TRAILING HEADERS ///////////
                         if( bytes_received > curr_position )
                         {

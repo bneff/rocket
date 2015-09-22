@@ -127,7 +127,7 @@ ssize_t rocket::tls_socket::connect( std::string host, uint16_t port, std::chron
     std::lock_guard<std::mutex> guard(lock_);
 
     ssize_t ret = tcp_socket::connect( host, port, millis );
-    printf("RET %d\n", ret );
+    printf("RET %zu\n", ret );
     if( ret > 0 )
     {
         //NEED MORE ERROR CHECKING IN THIS SECTION
