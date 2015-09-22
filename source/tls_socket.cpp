@@ -246,12 +246,12 @@ ssize_t rocket::tls_socket::recv( void* data, size_t len, std::chrono::milliseco
         error = handle_error( ssl_ret );
         if( error == SSL_ERROR_WANT_READ )
         {
-            printf("waiting to read\n");
+            //printf("waiting to read\n");
             can_recv_data( millis );
         }
         else if( error == SSL_ERROR_WANT_WRITE )
         {
-            printf("waiting to write\n");
+            //printf("waiting to write\n");
             can_send_data( millis );
         }
     }

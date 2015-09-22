@@ -60,11 +60,10 @@ public:
     //Could pass all of these into constructor to let caller decide max
     const size_t MAX_HEADER_SIZE = 4*1024;
     const size_t MAX_BODY_LENGTH = 1024*1024*32; //32MB Max
-    const size_t INITIAL_STORAGE_SIZE = 512*1024;
+    const size_t INITIAL_STORAGE_SIZE = 128*1024;
 
     http_response()
     {
-        storage_.resize( INITIAL_STORAGE_SIZE );
     }
     ~http_response()
     {}
@@ -76,7 +75,9 @@ public:
         size_t bytes_received = 0;
         size_t curr_position = 0;
         size_t body_start = 0;
+        
         storage_.clear();
+        storage_.resize( INITIAL_STORAGE_SIZE );
         while( socket->can_recv_data( timeout ) )
         {
             if( storage_.capacity() - bytes_received < 1024 )
