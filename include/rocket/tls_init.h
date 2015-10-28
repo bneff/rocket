@@ -66,6 +66,7 @@ public:
         SSL_CTX_set_session_cache_mode(ctx_, SSL_SESS_CACHE_OFF);
         //THIS COULD FAIL. NEED ERROR HANDLING
         SSL_CTX_load_verify_locations(ctx_, "./3rdparty/ca-bundle.crt", NULL);
+        SSL_CTX_set_ecdh_auto(ctx_, 1);
     }
 
     ssize_t set_cipher_list( std::string cipher_list )
